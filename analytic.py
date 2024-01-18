@@ -5,7 +5,7 @@ from io import BytesIO
 import base64
 
 app = Flask(__name__)
-app.secret_key = 'asdd'
+app.secret_key = 'ash'
 loaded_data = None
 
 @app.route('/')
@@ -18,6 +18,8 @@ def upload():
     file = request.files['file']
     if file:
         loaded_data = pd.read_excel(file)
+        print(loaded_data.dtypes)
+
         columns = list(loaded_data.columns)
         return render_template('upload.html', columns=columns)
     return render_template('index.html', error="File not provided.")
@@ -37,9 +39,11 @@ def plot():
         if chart_type == 'bar':
             plotly_fig = render_bar_chart(selected_columns)
         elif chart_type == 'line':
-            plotly_fig = render_line_chart(selected_columns)
+            plotly_fig = render_ver_bar_chart(selected_columns)
         elif chart_type == 'pie':
             plotly_fig = generate_pie_chart(selected_columns)
+        elif chart_type== 'scatter':
+            plotly_fig = render_scatter_plot(selected_columns)
         else:
             raise ValueError("Invalid chart type.")
     except Exception as e:
@@ -54,6 +58,29 @@ def plot():
 
 
 def render_bar_chart(selected_columns):
+    if len(selected_columns) < 2 or len(selected_columns) > 4:
+        return render_template('upload.html', error="Select between two to four columns for bar chart.")
+
+    # Extract columns
+    group_column = selected_columns[0]
+    sum_columns = selected_columns[1:]
+
+    grouped_data = loaded_data.groupby(group_column)[sum_columns].sum().reset_index()
+
+    fig = px.bar(grouped_data, x=sum_columns, y=group_column,
+                 orientation='h',
+                 title=f'Horizontal Bar Chart of {", ".join(sum_columns)} by {group_column}',
+                 labels={col: f"Total {col}" for col in sum_columns},
+                 category_orders={group_column: sorted(grouped_data[group_column].unique())},
+                 barmode='group') 
+
+    fig.update_layout(height=600, width=1000, showlegend=True)
+    fig.update_traces(marker=dict(line=dict(width=0.8)))
+    return fig
+
+
+
+def render_ver_bar_chart(selected_columns):
     if len(selected_columns) != 2:
         return render_template('upload.html', error="Select exactly two columns for bar chart.")
 
@@ -61,23 +88,21 @@ def render_bar_chart(selected_columns):
 
     grouped_data = loaded_data.groupby(group_column)[sum_column].sum().reset_index()
 
-    fig = px.bar(grouped_data, x=group_column, y=sum_column, 
-                 title=f'Bar Chart of Total {sum_column} by {group_column}',
+    fig = px.scatter(grouped_data, x=group_column, y=sum_column, 
+                 title=f'Vertical Bar Chart of Total {sum_column} by {group_column}',
                  labels={sum_column: f"Total {sum_column}"})
     return fig
 
-
-def render_line_chart(selected_columns):
+def render_scatter_plot(selected_columns):
     if len(selected_columns) != 2:
-        return render_template('upload.html', error="Select exactly two columns for line chart.")
+        return render_template('upload.html', error="Select exactly two columns for scatter plot.")
 
     x_column, y_column = selected_columns
 
-    grouped_data = loaded_data.groupby(x_column)[y_column].mean().reset_index()
-
-    fig = px.line(grouped_data, x=x_column, y=y_column, 
-                  title=f'Line Chart of Average Values for {y_column} by {x_column}',
-                  labels={y_column: f'Average {y_column}'})
+    fig = px.scatter(loaded_data, x=x_column, y=y_column,
+                     title=f'Scatter Plot: {y_column} vs {x_column}',
+                     labels={x_column: f"{x_column}", y_column: f"{y_column}"})
+    
     return fig
 
 def generate_pie_chart(selected_columns):
